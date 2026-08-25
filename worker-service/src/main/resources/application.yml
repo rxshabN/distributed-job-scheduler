@@ -1,0 +1,91 @@
+# Distinct from scheduler-service's 8080 (Spring Boot's own default, which scheduler-service
+# keeps). Both services default to 8080 out of the box, which is invisible under docker-compose --
+# each container has its own network namespace, and only scheduler-service's compose entry
+# publishes a host port at all -- but it collides immediately the moment scheduler-service and
+# worker-service are both run locally via `mvnw spring-boot:run` on the same machine, which is the
+# ordinary way to exercise the two services together outside Docker. Overridable via SERVER_PORT
+# so a deployment that wants a different value doesn't have to touch this file.
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: worker-service
+  task:
+    scheduling:
+      # MUST be > 1. Spring's default scheduler pool is a single thread, and JobPoller occupies it
+      # for the entire duration of a job's execution -- so with the default, HeartbeatService's
+      # @Scheduled refresh cannot run at all while a job is running. Both of this worker's liveness
+      # signals come from that one method (the Redis heartbeat key AND the lease extension), so a
+      # job that runs longer than heartbeat-ttl-seconds silently makes its own worker look dead:
+      # the key expires, the lease lapses, JobReaper sees both halves of its guard satisfied and
+      # requeues the job while the worker is still executing it. The job then runs again, and
+      # again, until max_attempts is exhausted -- with GET /api/v1/workers reporting zero live
+      # workers the whole time.
+      #
+      # 2 is the minimum that fixes it (one thread for the poll loop, one for the heartbeat);
+      # it is set to 3 to leave headroom for any further @Scheduled task without reintroducing
+      # the same starvation. This is why report-generation exists as a handler at all -- it is the
+      # long-running case that exposes this.
+      pool:
+        size: 3
+  datasource:
+    url: jdbc:postgresql://localhost:5432/${POSTGRES_DB:scheduler}
+    username: ${POSTGRES_USER:scheduler}
+    password: ${POSTGRES_PASSWORD:localdev}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    # scheduler-service owns the schema and is the only service that runs migrations -- worker-
+    # service has no db/migration files of its own, and leaving Flyway enabled here would make it
+    # try to validate the shared flyway_schema_history table against an empty local classpath and
+    # fail startup with "Detected applied migration not resolved locally".
+    enabled: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+
+# Spec §10: structured JSON logging. ECS (Elastic Common Schema) is one of Boot's built-in
+# structured formats -- no extra logging dependency needed. JobPoller puts jobId/workerId/attempt
+# into MDC around each execution, which the encoder folds into every log line's JSON automatically.
+logging:
+  structured:
+    format:
+      console: ecs
+
+worker:
+  batch-size: 5
+  lease-seconds: 30
+  poll-interval-ms: 1000
+  base-backoff-delay-millis: 1000
+  max-backoff-delay-millis: 300000
+  # ttl/3 refresh cadence per spec §5 (15s / 3 = 5s).
+  heartbeat-ttl-seconds: 15
+  heartbeat-refresh-interval-ms: 5000
+
+  # Egress policy for the http-callback handler -- the one place a client-supplied address is
+  # dialled from inside the deployment's network. Defaults are deny-by-default and are meant to
+  # stay that way in production; see CallbackUrlValidator for what each control does and for the
+  # DNS-rebinding limitation it cannot close on its own.
+  #
+  # allow-private-networks MUST remain false wherever the API is publicly reachable. The submission
+  # endpoint has no authentication, so flipping this to true on the deployed VM hands anyone who
+  # can POST a job an unauthenticated request-forgery primitive aimed at Postgres, Redis, the other
+  # compose containers, and the cloud instance metadata service at 169.254.169.254.
+  http-callback:
+    allowed-schemes: [http, https]
+    allow-private-networks: false
+    # Empty = any port. Narrow to [80, 443] if callback targets are known to be standard-port.
+    allowed-ports: []
+    # Empty = any host passing the resolved-IP checks. A non-empty list here is the only control
+    # that survives DNS rebinding, so fill it in once the real callback destinations are known.
+    allowed-hosts: []

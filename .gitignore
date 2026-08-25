@@ -1,0 +1,61 @@
+# --- Java / Maven ---
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+*.class
+*.jar
+!.mvn/wrapper/*.jar
+*.war
+*.ear
+*.log
+hs_err_pid*
+replay_pid*
+
+# --- Node / Next.js ---
+node_modules/
+.next/
+out/
+build/
+.pnp
+.pnp.js
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+
+# --- Environment / secrets ---
+# Never commit these. Cloud credentials, DB passwords, SSH deploy keys.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+oci_api_key*
+
+# --- IDE ---
+.claude/settings.local.json
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+.classpath
+.project
+.settings/
+.factorypath
+nbproject/private/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Test / build output ---
+coverage/
+.nyc_output/
+*.lcov
+surefire-reports/
+failsafe-reports/

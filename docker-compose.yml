@@ -1,0 +1,137 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: djs-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-scheduler}
+      POSTGRES_USER: ${POSTGRES_USER:-scheduler}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scheduler} -d ${POSTGRES_DB:-scheduler}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    # Every container carries a mem_limit so the whole stack has a stated ceiling that fits the
+    # Always Free VM (2 OCPU / 12 GB) with room to spare, and still fits the 1 GB GCP e2-micro
+    # fallback in spec §12 after halving these. Postgres gets the largest share: it is the only
+    # component whose working set grows with the job table.
+    mem_limit: 1g
+
+  redis:
+    image: redis:7-alpine
+    container_name: djs-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    # Heartbeats are the only thing in Redis and they all carry a TTL, so an unbounded dataset is
+    # impossible by design -- but the cap is set anyway: on a single VM shared with Postgres and
+    # three JVMs, an unbounded Redis is the one process that could starve the others if anything
+    # ever wrote a non-expiring key. allkeys-lru rather than noeviction because losing a heartbeat
+    # key degrades gracefully (the reaper treats it as a dead worker and reclaims, which is safe)
+    # whereas refusing writes would silently stop every worker from heartbeating at all.
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
+    # Kept comfortably above Redis's own --maxmemory 256mb so the eviction policy, not the OOM
+    # killer, is what reacts first if the keyspace ever grew unexpectedly.
+    mem_limit: 384m
+
+  scheduler-service:
+    # image + build together: `docker compose up` with no local image builds from source (local
+    # dev, and CI's own test job never touches this), while `docker compose pull` (the production
+    # deploy step in .github/workflows/ci.yml) fetches the CI-built image from ghcr.io instead of
+    # rebuilding a Java project on the VM. GHCR_NAMESPACE is unset until Rishab creates the GitHub
+    # repo and fills it into .env -- see .env.example.
+    image: ${GHCR_NAMESPACE:-distributed-job-scheduler}/scheduler-service:latest
+    build: ./scheduler-service
+    container_name: djs-scheduler-service
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-scheduler}
+      POSTGRES_USER: ${POSTGRES_USER:-scheduler}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-scheduler}
+      REDIS_HOST: redis
+      DASHBOARD_ALLOWED_ORIGINS: ${DASHBOARD_ALLOWED_ORIGINS:-http://localhost:3000}
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    # mem_limit is what makes the Dockerfile's -XX:MaxRAMPercentage=75 meaningful: without a
+    # cgroup limit each JVM sizes its heap against the *host's* total RAM, so three services would
+    # each claim 75% of the whole VM and the first real load spike would OOM-kill something.
+    # 768m here vs 512m per worker because this service holds the Tomcat thread pool and JPA
+    # infrastructure the workers don't.
+    mem_limit: 768m
+    # The image's own HEALTHCHECK hits /actuator/health, which only passes once Flyway has
+    # migrated and the datasource is live -- which is exactly the condition the workers below wait
+    # on, so it has to mean more than "the port is open".
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Two replicas (spec §12's deployment table) -- this is the horizontal-scaling proof point: the
+  # claim query's FOR UPDATE SKIP LOCKED is what makes running N of these safe at all (spec §1,
+  # §4). scheduler-service owns migrations and must be healthy (schema present) before either
+  # worker starts polling.
+  worker-service-1:
+    image: ${GHCR_NAMESPACE:-distributed-job-scheduler}/worker-service:latest
+    build: ./worker-service
+    container_name: djs-worker-service-1
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-scheduler}
+      POSTGRES_USER: ${POSTGRES_USER:-scheduler}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-scheduler}
+      REDIS_HOST: redis
+    restart: unless-stopped
+    mem_limit: 512m
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      scheduler-service:
+        # service_healthy, not service_started: scheduler-service owns the Flyway migrations, and
+        # a worker that starts first spends its early poll cycles throwing
+        # "relation \"jobs\" does not exist" against a schema that isn't there yet. Waiting on the
+        # health check makes the ordering the comment above always claimed it was.
+        condition: service_healthy
+
+  worker-service-2:
+    image: ${GHCR_NAMESPACE:-distributed-job-scheduler}/worker-service:latest
+    build: ./worker-service
+    container_name: djs-worker-service-2
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-scheduler}
+      POSTGRES_USER: ${POSTGRES_USER:-scheduler}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-scheduler}
+      REDIS_HOST: redis
+    restart: unless-stopped
+    mem_limit: 512m
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      scheduler-service:
+        # service_healthy, not service_started: scheduler-service owns the Flyway migrations, and
+        # a worker that starts first spends its early poll cycles throwing
+        # "relation \"jobs\" does not exist" against a schema that isn't there yet. Waiting on the
+        # health check makes the ordering the comment above always claimed it was.
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:

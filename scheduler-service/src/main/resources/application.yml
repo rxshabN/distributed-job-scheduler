@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: scheduler-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/${POSTGRES_DB:scheduler}
+    username: ${POSTGRES_USER:scheduler}
+    password: ${POSTGRES_PASSWORD:localdev}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+
+# Spec §10: structured JSON logging (see worker-service's application.yml for the same setting
+# and why it needs no extra dependency).
+logging:
+  structured:
+    format:
+      console: ecs
+
+# Spec §5: how often JobReaper sweeps for orphaned RUNNING jobs.
+reaper:
+  interval-ms: 10000
+  # Maximum candidates locked per sweep. Bounds how long one reclaim transaction holds row locks,
+  # since each candidate costs a Redis round trip between the SELECT and the UPDATE -- see
+  # JobReaper for why an unbounded sweep is an availability risk during mass worker failure. A
+  # backlog larger than this drains across consecutive sweeps, oldest lease expiry first.
+  batch-size: 200
+
+# Spec §12: comma-separated allowedOriginPatterns for the dashboard's cross-origin requests.
+# Defaults to local dashboard dev; set to the Vercel production URL (plus *.vercel.app for preview
+# deploys) in the deployed environment.
+dashboard:
+  allowed-origin-patterns: ${DASHBOARD_ALLOWED_ORIGINS:http://localhost:3000}

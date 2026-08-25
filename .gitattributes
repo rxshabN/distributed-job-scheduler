@@ -1,0 +1,38 @@
+# Normalise line endings on commit, check out native on each platform.
+* text=auto
+
+# These are executed by a Linux shell — inside Docker containers and in CI.
+# If Git checks them out with CRLF on Windows, the container fails with
+# "bad interpreter: No such file or directory". Pin them to LF unconditionally.
+mvnw            text eol=lf
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+*.Dockerfile    text eol=lf
+.dockerignore   text eol=lf
+
+# Windows-only scripts must keep CRLF.
+mvnw.cmd        text eol=crlf
+*.bat           text eol=crlf
+
+# Sources and config: normalise to LF so diffs stay clean across machines.
+*.java          text eol=lf
+*.sql           text eol=lf
+*.xml           text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.json          text eol=lf
+*.md            text eol=lf
+*.ts            text eol=lf
+*.tsx           text eol=lf
+*.js            text eol=lf
+*.jsx           text eol=lf
+*.css           text eol=lf
+*.properties    text eol=lf
+
+# Binaries — never touch.
+*.jar           binary
+*.png           binary
+*.jpg           binary
+*.ico           binary
+*.woff          binary
+*.woff2         binary
