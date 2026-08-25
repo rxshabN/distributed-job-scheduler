@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, ApiRequestError } from "@/lib/api";
 
 const JOB_TYPES = ["http-callback", "email-simulation", "report-generation"] as const;
@@ -11,23 +11,80 @@ const PAYLOAD_PLACEHOLDERS: Record<(typeof JOB_TYPES)[number], string> = {
   "report-generation": '{\n  "durationMillis": 3000\n}',
 };
 
+interface FieldErrors {
+  payload?: string;
+  priority?: string;
+  maxAttempts?: string;
+  dependsOn?: string;
+}
+
+function validate(fields: {
+  payloadText: string;
+  priority: string;
+  maxAttempts: string;
+  dependsOnText: string;
+}): FieldErrors {
+  const errors: FieldErrors = {};
+
+  if (!fields.payloadText.trim()) {
+    errors.payload = "Payload is required.";
+  } else {
+    try {
+      JSON.parse(fields.payloadText);
+    } catch {
+      errors.payload = "Payload is not valid JSON.";
+    }
+  }
+
+  if (fields.priority.trim() === "" || !Number.isInteger(Number(fields.priority))) {
+    errors.priority = "Priority must be a whole number.";
+  }
+
+  if (
+    fields.maxAttempts.trim() === "" ||
+    !Number.isInteger(Number(fields.maxAttempts)) ||
+    Number(fields.maxAttempts) < 1
+  ) {
+    errors.maxAttempts = "Max attempts must be a whole number of at least 1.";
+  }
+
+  const dependsOnTokens = fields.dependsOnText
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (dependsOnTokens.some((token) => !/^\d+$/.test(token))) {
+    errors.dependsOn = "Depends on must be a comma-separated list of job IDs.";
+  }
+
+  return errors;
+}
+
 export function SubmitJobForm({ onSubmitted }: { onSubmitted: () => void }) {
   const [jobType, setJobType] = useState<(typeof JOB_TYPES)[number]>("email-simulation");
-  const [payloadText, setPayloadText] = useState(PAYLOAD_PLACEHOLDERS["email-simulation"]);
+  const [payloadText, setPayloadText] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState("");
   const [priority, setPriority] = useState("0");
   const [maxAttempts, setMaxAttempts] = useState("5");
   const [dependsOnText, setDependsOnText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [toast, setToast] = useState<string | null>(null);
 
-  function handleJobTypeChange(next: (typeof JOB_TYPES)[number]) {
-    setJobType(next);
-    setPayloadText(PAYLOAD_PLACEHOLDERS[next]);
-  }
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(id);
+  }, [toast]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const fieldErrors = validate({ payloadText, priority, maxAttempts, dependsOnText });
+    setErrors(fieldErrors);
+    if (Object.keys(fieldErrors).length > 0) {
+      return;
+    }
+
     setSubmitting(true);
     setResult(null);
     try {
@@ -38,7 +95,7 @@ export function SubmitJobForm({ onSubmitted }: { onSubmitted: () => void }) {
         .filter(Boolean)
         .map(Number);
 
-      const job = await api.submitJob({
+      const { job, created } = await api.submitJob({
         jobType,
         payload,
         idempotencyKey: idempotencyKey || crypto.randomUUID(),
@@ -46,13 +103,19 @@ export function SubmitJobForm({ onSubmitted }: { onSubmitted: () => void }) {
         maxAttempts: Number(maxAttempts),
         dependsOn: dependsOn.length > 0 ? dependsOn : undefined,
       });
-      setResult({ ok: true, message: `Submitted job #${job.id} (${job.state})` });
+
+      if (created) {
+        setResult({ ok: true, message: `Submitted job #${job.id} (${job.state})` });
+      } else {
+        // spec §7: resubmitting a known idempotency_key returns the existing job rather than
+        // creating a new one, so this isn't a failure -- it just isn't a new submission either.
+        setToast(`A job with this idempotency key already exists — showing job #${job.id} (${job.state}).`);
+        setResult({ ok: true, message: `Job #${job.id} already exists for this idempotency key.` });
+      }
       setIdempotencyKey("");
       onSubmitted();
     } catch (err) {
-      if (err instanceof SyntaxError) {
-        setResult({ ok: false, message: "Payload is not valid JSON" });
-      } else if (err instanceof ApiRequestError) {
+      if (err instanceof ApiRequestError) {
         setResult({ ok: false, message: err.message });
       } else {
         setResult({ ok: false, message: String(err) });
@@ -63,12 +126,18 @@ export function SubmitJobForm({ onSubmitted }: { onSubmitted: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-xl space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {toast && (
+        <div className="fixed right-6 top-6 z-50 max-w-sm rounded border border-amber-700 bg-amber-950 px-4 py-3 text-sm text-amber-100 shadow-lg">
+          {toast}
+        </div>
+      )}
+
       <div>
         <label className="block text-sm font-medium text-neutral-300">Job type</label>
         <select
           value={jobType}
-          onChange={(e) => handleJobTypeChange(e.target.value as (typeof JOB_TYPES)[number])}
+          onChange={(e) => setJobType(e.target.value as (typeof JOB_TYPES)[number])}
           className="mt-1 w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
         >
           {JOB_TYPES.map((type) => (
@@ -84,9 +153,13 @@ export function SubmitJobForm({ onSubmitted }: { onSubmitted: () => void }) {
         <textarea
           value={payloadText}
           onChange={(e) => setPayloadText(e.target.value)}
+          placeholder={PAYLOAD_PLACEHOLDERS[jobType]}
           rows={6}
-          className="mt-1 w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 font-mono text-sm text-neutral-100"
+          className={`mt-1 w-full rounded border bg-neutral-900 px-3 py-2 font-mono text-sm text-neutral-100 placeholder:text-neutral-600 ${
+            errors.payload ? "border-red-600" : "border-neutral-700"
+          }`}
         />
+        {errors.payload && <p className="mt-1 text-xs text-red-400">{errors.payload}</p>}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -96,8 +169,11 @@ export function SubmitJobForm({ onSubmitted }: { onSubmitted: () => void }) {
             type="number"
             value={priority}
             onChange={(e) => setPriority(e.target.value)}
-            className="mt-1 w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
+            className={`mt-1 w-full rounded border bg-neutral-900 px-3 py-2 text-sm text-neutral-100 ${
+              errors.priority ? "border-red-600" : "border-neutral-700"
+            }`}
           />
+          {errors.priority && <p className="mt-1 text-xs text-red-400">{errors.priority}</p>}
         </div>
         <div>
           <label className="block text-sm font-medium text-neutral-300">Max attempts</label>
@@ -106,8 +182,11 @@ export function SubmitJobForm({ onSubmitted }: { onSubmitted: () => void }) {
             min={1}
             value={maxAttempts}
             onChange={(e) => setMaxAttempts(e.target.value)}
-            className="mt-1 w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
+            className={`mt-1 w-full rounded border bg-neutral-900 px-3 py-2 text-sm text-neutral-100 ${
+              errors.maxAttempts ? "border-red-600" : "border-neutral-700"
+            }`}
           />
+          {errors.maxAttempts && <p className="mt-1 text-xs text-red-400">{errors.maxAttempts}</p>}
         </div>
       </div>
 
@@ -129,8 +208,11 @@ export function SubmitJobForm({ onSubmitted }: { onSubmitted: () => void }) {
           value={dependsOnText}
           onChange={(e) => setDependsOnText(e.target.value)}
           placeholder="e.g. 12, 13"
-          className="mt-1 w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
+          className={`mt-1 w-full rounded border bg-neutral-900 px-3 py-2 text-sm text-neutral-100 ${
+            errors.dependsOn ? "border-red-600" : "border-neutral-700"
+          }`}
         />
+        {errors.dependsOn && <p className="mt-1 text-xs text-red-400">{errors.dependsOn}</p>}
       </div>
 
       <button

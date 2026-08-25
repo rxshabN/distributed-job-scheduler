@@ -22,7 +22,7 @@ class ApiRequestError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestWithStatus<T>(path: string, init?: RequestInit): Promise<{ body: T; status: number }> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
@@ -33,9 +33,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiRequestError(response.status, body);
   }
   if (response.status === 204) {
-    return undefined as T;
+    return { body: undefined as T, status: response.status };
   }
-  return response.json() as Promise<T>;
+  return { body: (await response.json()) as T, status: response.status };
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const { body } = await requestWithStatus<T>(path, init);
+  return body;
 }
 
 export interface SubmitJobRequest {
@@ -49,17 +54,27 @@ export interface SubmitJobRequest {
 }
 
 export const api = {
-  submitJob: (body: SubmitJobRequest) =>
-    request<import("./types").JobResponse>("/api/v1/jobs", { method: "POST", body: JSON.stringify(body) }),
+  // The scheduler-service returns 201 for a genuinely new job and 200 when the idempotency key
+  // already exists (spec §7) -- surfacing which one happened lets the dashboard tell the user
+  // their submission was deduplicated rather than silently showing the (pre-existing) job as new.
+  submitJob: async (body: SubmitJobRequest) => {
+    const { body: job, status } = await requestWithStatus<import("./types").JobResponse>("/api/v1/jobs", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return { job, created: status === 201 };
+  },
 
   getJob: (id: number) => request<JobDetailResponse>(`/api/v1/jobs/${id}`),
 
-  listJobs: (params: { state?: JobState; jobType?: string; page?: number; size?: number } = {}) => {
+  listJobs: (params: { state?: JobState; page?: number; size?: number } = {}) => {
     const query = new URLSearchParams();
     if (params.state) query.set("state", params.state);
-    if (params.jobType) query.set("jobType", params.jobType);
     query.set("page", String(params.page ?? 0));
     query.set("size", String(params.size ?? 20));
+    // Jobs tab is sorted by ID ascending; the API defaults to createdAt DESC (display order for
+    // a firehose of new submissions), which isn't what the table should show.
+    query.set("sort", "id,asc");
     return request<PagedJobs>(`/api/v1/jobs?${query.toString()}`);
   },
 

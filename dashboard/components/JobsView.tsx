@@ -17,7 +17,6 @@ const STATE_COLORS: Record<JobState, string> = {
 
 export function JobsView({ refreshToken }: { refreshToken: number }) {
   const [stateFilter, setStateFilter] = useState<JobState | "">("");
-  const [jobTypeFilter, setJobTypeFilter] = useState("");
   const [page, setPage] = useState(0);
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
 
@@ -25,11 +24,10 @@ export function JobsView({ refreshToken }: { refreshToken: number }) {
     () =>
       api.listJobs({
         state: stateFilter || undefined,
-        jobType: jobTypeFilter || undefined,
         page,
         size: 10,
       }),
-    [stateFilter, jobTypeFilter, page],
+    [stateFilter, page],
   );
 
   const { data, error, loading } = usePolling(fetchJobs, 3000);
@@ -56,16 +54,6 @@ export function JobsView({ refreshToken }: { refreshToken: number }) {
             </option>
           ))}
         </select>
-        <input
-          type="text"
-          placeholder="Filter by job type"
-          value={jobTypeFilter}
-          onChange={(e) => {
-            setJobTypeFilter(e.target.value);
-            setPage(0);
-          }}
-          className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm text-neutral-100"
-        />
       </div>
 
       {error && <p className="text-sm text-red-400">{error.message}</p>}
@@ -174,8 +162,11 @@ function JobDetailPanel({ jobId, onClose }: { jobId: number; onClose: () => void
       >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-neutral-100">Job #{jobId}</h3>
-          <button onClick={onClose} className="text-neutral-400 hover:text-neutral-200">
-            close
+          <button
+            onClick={onClose}
+            className="rounded border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100"
+          >
+            Close
           </button>
         </div>
 

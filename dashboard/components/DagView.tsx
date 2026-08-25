@@ -51,11 +51,21 @@ export function DagView() {
   }
 
   const width = (layout.maxDepth + 1) * COLUMN_WIDTH;
-  const height = (layout.maxRow + 1) * ROW_HEIGHT;
+  const height = (layout.maxRow + 1) * ROW_HEIGHT + 40;
 
   return (
-    <div className="overflow-x-auto">
-      <svg width={width} height={height + 40} className="min-w-full">
+    // The graph's natural size grows with the number of jobs and dependency depth, which can
+    // exceed its container for anything beyond a handful of demo jobs. Rendering at a fixed
+    // pixel size and scrolling would let it spill past the page; instead the SVG keeps its
+    // viewBox at the natural layout size but is scaled down to fit maxHeight/the container width,
+    // so it shrinks rather than overflows.
+    <div className="flex w-full justify-center rounded border border-neutral-800 bg-neutral-950/40 p-4">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMidYMin meet"
+        className="w-full"
+        style={{ maxHeight: 560 }}
+      >
         {layout.edges.map(([from, to], i) => (
           <line
             key={i}
