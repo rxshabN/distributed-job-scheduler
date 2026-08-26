@@ -94,5 +94,10 @@ jobs:
             # capacity was unavailable at signup), which only has headroom for one worker
             # alongside Postgres/Redis/scheduler-service. Bring it up manually with
             # `docker compose --profile demo up -d worker-service-2` for a live demo.
-            docker compose pull scheduler-service worker-service-1
-            docker compose up -d scheduler-service worker-service-1
+            #
+            # caddy is included here even though CI never builds/pushes an image for it (it's the
+            # public caddy:2-alpine image) -- `pull` refreshes that image and `up -d` is what
+            # actually gets the HTTPS reverse proxy running/recreated on every deploy; without it
+            # the dashboard's mixed-content workaround silently stops being deployed.
+            docker compose pull scheduler-service worker-service-1 caddy
+            docker compose up -d scheduler-service worker-service-1 caddy

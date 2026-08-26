@@ -26,8 +26,11 @@ services:
     # still sums to 1.3+ GB with even a single worker -- it doesn't fit). Budget: ~800 MB across
     # all containers, leaving ~200 MB for the host OS and Docker daemon on a 1 GB box.
     # command below also trims shared_buffers/max_connections so Postgres itself fits in 200m.
+    # max_connections=20 (minus postgresql.conf's default superuser_reserved_connections=3 -> 17
+    # usable) covers the worst case of scheduler-service + both worker replicas running at once
+    # with the HikariCP pool caps set below (5 + 4 + 4 = 13), with headroom to spare.
     mem_limit: 200m
-    command: postgres -c shared_buffers=32MB -c max_connections=15 -c maintenance_work_mem=32MB
+    command: postgres -c shared_buffers=32MB -c max_connections=20 -c maintenance_work_mem=32MB
 
   redis:
     image: redis:7-alpine
@@ -79,6 +82,10 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-scheduler}
       REDIS_HOST: redis
       DASHBOARD_ALLOWED_ORIGINS: ${DASHBOARD_ALLOWED_ORIGINS:-http://localhost:3000}
+      # Spring's Hikari default pool (10) times three services would exceed postgres's
+      # max_connections above on its own -- capped explicitly per service instead of left to
+      # the default. See postgres's mem_limit comment for the total budget this fits.
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 5
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -104,11 +111,12 @@ services:
   # worker starts polling.
   #
   # On the deployed 1 GB E2.1.Micro fallback (see postgres's mem_limit comment), postgres (200m) +
-  # redis (96m) + scheduler-service (280m) + one worker (220m) already sum to 796m, leaving only
-  # ~200m for the host OS and Docker daemon -- there is no room left for worker-service-2 to run
-  # concurrently by default. It carries the "demo" profile below so plain `docker compose up -d`
-  # (no --profile flag) only brings up worker-service-1; the multi-worker claim-safety behaviour
-  # is still real and still covered by the concurrent-claim integration test, it's just not
+  # redis (96m) + scheduler-service (280m) + one worker (200m) + caddy (48m) already sum to 824m,
+  # leaving only ~176m for the host OS and Docker daemon -- there is no room left for
+  # worker-service-2 to run concurrently by default. It carries the "demo" profile below so plain
+  # `docker compose up -d` (no --profile flag) only brings up worker-service-1; the multi-worker
+  # claim-safety behaviour is still real and still covered by the concurrent-claim integration
+  # test, it's just not
   # permanently running two replicas on this box. Bring worker-service-2 up temporarily for a live
   # demo with `docker compose --profile demo up -d worker-service-2` (stop it again afterward,
   # e.g. `docker compose stop worker-service-2`) -- or drop the profiles: line entirely to run both
@@ -123,8 +131,10 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-scheduler}
       REDIS_HOST: redis
+      # See scheduler-service's env block for why this is capped explicitly.
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 4
     restart: unless-stopped
-    mem_limit: 220m
+    mem_limit: 200m
     depends_on:
       postgres:
         condition: service_healthy
@@ -149,8 +159,10 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-scheduler}
       REDIS_HOST: redis
+      # See scheduler-service's env block for why this is capped explicitly.
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 4
     restart: unless-stopped
-    mem_limit: 220m
+    mem_limit: 200m
     depends_on:
       postgres:
         condition: service_healthy
@@ -162,6 +174,7 @@ services:
         # "relation \"jobs\" does not exist" against a schema that isn't there yet. Waiting on the
         # health check makes the ordering the comment above always claimed it was.
         condition: service_healthy
+
   caddy:
     image: caddy:2-alpine
     container_name: djs-caddy
@@ -174,6 +187,10 @@ services:
     depends_on:
       - scheduler-service
     restart: unless-stopped
+    # Caddy's own footprint is small (static Go binary, no JVM), but an unbounded container on a
+    # 1 GB host defeats the point of capping everything else. 48m covers steady-state proxying
+    # plus the brief extra allocation during ACME cert issuance/renewal.
+    mem_limit: 48m
 
 volumes:
   postgres-data:
