@@ -17,22 +17,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import tools.jackson.databind.ObjectMapper;
 
-// Spec §11 test 4 ("Retry exhaustion -- a handler that always fails; assert exactly maxAttempts
-// executions then DEAD_LETTER") and test 5 ("Backoff timing -- assert next_run_at grows and stays
-// within the jitter bounds"), driven through the real claim -> execute -> complete cycle rather
-// than by calling the completion repository directly.
-//
-// Not @Transactional: JobPoller's claim, audit insert and completion update each run in their own
-// transaction, and this test needs to observe the committed result of one full cycle before
-// starting the next. A test-managed transaction would also hide exactly the thing under test --
-// whether the *committed* row count matches maxAttempts.
-//
-// Between cycles the test pulls next_run_at back to now() instead of sleeping out the real
-// backoff. That's the one piece of fidelity deliberately traded away: waiting out even a 1-second
-// base delay across three attempts with full jitter makes the test slow and its runtime
-// nondeterministic, and the delay itself is asserted separately in backoffDelayGrowsAndStaysWithinJitterBounds
-// below (and exhaustively in BackoffPolicyTest). What matters here is the attempt accounting, not
-// the wall-clock wait.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @TestPropertySource(properties = {
@@ -64,14 +48,6 @@ class RetryExhaustionIntegrationTest {
 		int maxAttempts = 3;
 		Long jobId = insertAlwaysFailingJob(maxAttempts);
 
-		// Bounded "drive until terminal" rather than exactly maxAttempts iterations. A poll cycle
-		// is not guaranteed to advance *this* job -- @Scheduled fires JobPoller once at context
-		// startup regardless of poll-interval-ms, so a cycle can be in flight before the test body
-		// begins and claim the fixture out from under the first iteration. Looping to a terminal
-		// state keeps the assertion that matters ("exactly maxAttempts executions, then
-		// DEAD_LETTER") exact, while the generous ceiling only guards against hanging: if the
-		// retry accounting were broken the count assertions below still fail, they just fail on
-		// the real number instead of on a mistimed loop.
 		for (int cycle = 0; cycle < maxAttempts * 4 && !isTerminal(jobId); cycle++) {
 			jobPoller.pollAndExecute();
 			makeImmediatelyDueAgainIfStillPending(jobId);
@@ -95,10 +71,6 @@ class RetryExhaustionIntegrationTest {
 		jobPoller.pollAndExecute();
 		assertThat(stateOf(jobId)).isEqualTo("DEAD_LETTER");
 
-		// The terminal state has to actually be terminal: the claim query filters on
-		// state = 'PENDING', so a further cycle must neither re-run it nor add an audit row.
-		// (This is also what keeps DEAD_LETTER -> RUNNING, which the V1 trigger forbids outright,
-		// from ever being attempted.)
 		jobPoller.pollAndExecute();
 
 		assertThat(stateOf(jobId)).isEqualTo("DEAD_LETTER");
@@ -110,10 +82,6 @@ class RetryExhaustionIntegrationTest {
 	void backoffDelayGrowsAndStaysWithinJitterBoundsAcrossAttempts() {
 		Long jobId = insertAlwaysFailingJob(5);
 
-		// Full jitter picks uniformly from [0, cap], so any single attempt's delay can legally be
-		// smaller than the previous one -- asserting a strictly increasing sequence would be
-		// asserting a bug. What actually grows is the *ceiling*, so that is what is asserted per
-		// attempt: delay <= min(2^attempt * base, max).
 		for (int attempt = 1; attempt <= 4; attempt++) {
 			Instant beforeCycle = Instant.now();
 			jobPoller.pollAndExecute();
@@ -128,8 +96,6 @@ class RetryExhaustionIntegrationTest {
 			assertThat(observedDelayMillis)
 					.as("attempt %d delay must fall inside the full-jitter window [0, %d]", attempt, cap)
 					.isGreaterThanOrEqualTo(0)
-					// Slack absorbs the handler's own execution time plus clock granularity between
-					// the sample above and BackoffPolicy's own Instant.now() inside the poller.
 					.isLessThanOrEqualTo(cap + 5_000);
 
 			makeImmediatelyDueAgainIfStillPending(jobId);

@@ -7,42 +7,6 @@ import java.net.UnknownHostException;
 import java.util.Locale;
 import org.springframework.stereotype.Component;
 
-// Server-Side Request Forgery defence for HttpCallbackJobHandler (spec §8's "POSTs the payload to
-// a URL"). That handler takes its destination from job payload, and the submission API has no
-// authentication -- so without this, anyone who can reach POST /api/v1/jobs can make the worker
-// issue arbitrary requests from inside the deployment's network. On the Oracle VM (spec §12) that
-// network contains Postgres, Redis, the other containers, and the cloud instance metadata service.
-//
-// WHY VALIDATION IS ON THE RESOLVED IP, NOT THE URL STRING
-//
-// String and hostname checks are the common implementation and they do not work. "localhost" is
-// only one of the spellings: 127.0.0.1, 127.1, 2130706433 (decimal), 0x7f.0.0.1 (hex), [::1],
-// [::ffff:127.0.0.1] (IPv4-mapped IPv6), 0.0.0.0, and any attacker-controlled DNS name with an A
-// record pointing at 127.0.0.1 all reach the same place. Resolving the name and inspecting the
-// actual InetAddress collapses every one of those spellings into the same check, because they all
-// resolve to an address the JDK will classify identically. That is why this class calls
-// InetAddress.getAllByName rather than pattern-matching the URI.
-//
-// ALL resolved addresses are checked, not just the first: a hostname with both a public and a
-// private A record would otherwise pass validation and then connect to whichever the resolver
-// handed the HTTP client.
-//
-// KNOWN LIMITATION -- DNS REBINDING, STATED RATHER THAN PAPERED OVER
-//
-// This validates the name, then the HTTP client resolves it again to make the request. An attacker
-// controlling the authoritative DNS for a name can answer the first lookup with a public address
-// and the second with 169.254.169.254 -- a TOCTOU window this design cannot close, because
-// RestClient offers no hook to pin a validated address for the connection while preserving TLS
-// SNI and certificate validation. Closing it properly means either a custom connection-level
-// resolver (real complexity, and easy to get subtly wrong for HTTPS) or -- the honest production
-// answer -- network-level egress control on the VM, which is enforcement the application cannot
-// be trusted to do for itself. allowedHosts is the in-app mitigation: a non-empty allow-list is
-// evaluated on the name and is therefore immune to rebinding, since a rebound address still has to
-// arrive under an allow-listed hostname.
-//
-// Recommended for the deployed system: iptables/nftables egress rules on the VM denying the
-// worker containers access to 169.254.0.0/16 and the compose subnet, with this validator as the
-// defence-in-depth layer that also produces a clear error message.
 @Component
 public class CallbackUrlValidator {
 

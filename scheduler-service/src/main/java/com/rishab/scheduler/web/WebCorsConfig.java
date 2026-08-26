@@ -5,11 +5,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-// Spec §12: the dashboard (Vercel) and this API (Oracle VM) are cross-origin by definition, and
-// Spring Security is explicitly out of scope for this project -- this WebMvcConfigurer mapping is
-// the whole CORS story. allowedOriginPatterns rather than allowedOrigins so both the fixed
-// production domain and Vercel's per-deploy preview subdomains (*.vercel.app) work without
-// updating this list on every deploy.
 @Configuration
 public class WebCorsConfig implements WebMvcConfigurer {
 

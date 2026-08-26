@@ -13,11 +13,6 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
-// Intentionally does not catch DataIntegrityViolationException: JobService.submit() already
-// catches and resolves the one expected case (the idempotency_key unique-constraint conflict,
-// spec §7) internally and returns the existing job. Anything that still reaches here as a
-// DataIntegrityViolationException is therefore a genuinely unexpected constraint violation, not
-// a duplicate submission -- falling through to the default 500 is correct, not a gap.
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 

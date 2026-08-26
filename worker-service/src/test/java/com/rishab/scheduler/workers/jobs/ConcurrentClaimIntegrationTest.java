@@ -26,21 +26,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import tools.jackson.databind.ObjectMapper;
 
-// Spec §11 test 1: "10 threads claim from a pool of 100 jobs; assert every job claimed exactly
-// once and no thread blocks."
-//
-// Deliberately NOT @Transactional, unlike the other repository integration tests in this package.
-// A test-managed rollback-only transaction would confine every thread's work to one connection's
-// uncommitted snapshot, which is precisely the thing FOR UPDATE SKIP LOCKED operates across --
-// the claim would degenerate into a single-connection exercise and prove nothing about
-// concurrency. Each worker thread therefore commits for real, and cleanup happens by
-// idempotency-key prefix in @BeforeEach instead of by rollback.
-//
-// "No thread blocks" is asserted structurally rather than by timing a stopwatch (which would be
-// flaky on a loaded CI runner): with plain FOR UPDATE, 9 of 10 threads would queue behind the
-// first on the same candidate rows and the pool would drain in near-serial rounds. The assertion
-// that every thread returns before the executor's timeout, combined with the exactly-once result,
-// is what SKIP LOCKED buys -- a blocked thread would either time out here or produce a duplicate.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @TestPropertySource(properties = {"worker.poll-interval-ms=3600000", "spring.flyway.enabled=true"})
@@ -64,7 +49,6 @@ class ConcurrentClaimIntegrationTest {
 
 	@BeforeEach
 	void clearPreviousRun() {
-		// ON DELETE CASCADE on job_executions.job_id takes the audit rows with it.
 		jdbcTemplate.update("DELETE FROM jobs WHERE idempotency_key LIKE ?", KEY_PREFIX + "%");
 	}
 
@@ -74,8 +58,6 @@ class ConcurrentClaimIntegrationTest {
 
 		List<Long> allClaimedIds = drainPoolWithConcurrentWorkers();
 
-		// Exactly-once has two halves and both have to hold: nothing claimed twice (no duplicate
-		// in the combined result) and nothing left behind (the union covers the whole pool).
 		assertThat(allClaimedIds).hasSize(JOB_COUNT);
 		assertThat(allClaimedIds).doesNotHaveDuplicates();
 		assertThat(Set.copyOf(allClaimedIds)).isEqualTo(insertedIds);
@@ -87,9 +69,6 @@ class ConcurrentClaimIntegrationTest {
 
 		drainPoolWithConcurrentWorkers();
 
-		// attempt_count is incremented inside the same UPDATE that sets RUNNING, so a job claimed
-		// twice would show attempt_count = 2 here even if both claims somehow returned the same
-		// id to different threads without the id-level duplicate check above catching it.
 		List<Integer> attemptCounts = jdbcTemplate.queryForList(
 				"SELECT attempt_count FROM jobs WHERE idempotency_key LIKE ?", Integer.class, KEY_PREFIX + "%");
 		assertThat(attemptCounts).hasSize(JOB_COUNT).containsOnly(1);
@@ -109,10 +88,6 @@ class ConcurrentClaimIntegrationTest {
 
 		List<Long> allClaimedIds = drainPoolWithConcurrentWorkers();
 
-		// job_executions' UNIQUE (job_id, attempt) is the database-level proof the roadmap's load
-		// test leans on: if two workers had claimed the same job on the same attempt, one of these
-		// inserts would raise a constraint violation instead of completing. Writing one audit row
-		// per claim turns "exactly once" from an in-memory assertion into one Postgres enforces.
 		for (Long jobId : allClaimedIds) {
 			jobExecutionAuditRepository.recordAttempt(
 					jobId, 1, "assert-worker", Instant.now(), Instant.now(), true, null);
@@ -126,11 +101,6 @@ class ConcurrentClaimIntegrationTest {
 		assertThat(auditRows).isEqualTo(JOB_COUNT);
 	}
 
-	// Each thread loops claim() until the shared pool is drained, rather than claiming once and
-	// stopping: with batchSize 5 and 100 jobs, a single round of 10 threads could only ever take
-	// 50: the remaining 50 would be untested. Looping until empty is what actually forces the
-	// threads to contend repeatedly over a shrinking candidate set, which is where a claim query
-	// missing SKIP LOCKED would show up.
 	private List<Long> drainPoolWithConcurrentWorkers() throws Exception {
 		ExecutorService executor = Executors.newFixedThreadPool(THREAD_COUNT);
 		CountDownLatch startGate = new CountDownLatch(1);
@@ -145,9 +115,6 @@ class ConcurrentClaimIntegrationTest {
 					while (remaining.get() > 0) {
 						List<ClaimedJob> batch = jobClaimRepository.claim(workerId, BATCH_SIZE, 30);
 						if (batch.isEmpty()) {
-							// Another thread holds the last rows' locks but hasn't committed yet;
-							// the pool isn't drained, so yield and retry rather than exiting and
-							// leaving the tail unclaimed.
 							Thread.yield();
 							continue;
 						}
@@ -166,9 +133,6 @@ class ConcurrentClaimIntegrationTest {
 
 			List<Long> allClaimedIds = new ArrayList<>();
 			for (Future<List<Long>> future : futures) {
-				// A thread that blocked instead of skipping locked rows would still be waiting
-				// here; the timeout turns "no thread blocks" into a failing test rather than a
-				// hang.
 				allClaimedIds.addAll(future.get(60, TimeUnit.SECONDS));
 			}
 			return allClaimedIds;

@@ -8,14 +8,6 @@ import java.security.NoSuchAlgorithmException;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 
-// Spec §8 handler 3: CPU-bound work with a deliberate slow path, for showing lease extension on
-// long-running jobs -- that extension mechanism itself is Weekend 3's HeartbeatService/
-// LeaseManager, not built yet, so this weekend the handler's only job is to genuinely occupy the
-// CPU for the configured duration rather than just sleeping (email-simulation already covers the
-// "slow because of I/O" case; this one has to be slow because of actual computation). Repeated
-// SHA-256 hashing is the busywork -- cheap to reason about, and immune to being optimized away by
-// the JIT since each iteration's input depends on the previous digest. Payload shape:
-// {"durationMillis": 3000} -- optional, defaults to 3000.
 @Component
 public class ReportGenerationJobHandler implements JobHandler {
 

@@ -10,10 +10,6 @@ import { DagView } from "@/components/DagView";
 const TABS = ["Submit", "Jobs", "Workers", "Metrics", "Dependency graph"] as const;
 type Tab = (typeof TABS)[number];
 
-// Spec §9: "Single-page app, polls /api/v1/stats and /api/v1/jobs on an interval." One page, one
-// client-side tab switcher -- not separate Next.js routes -- matches "single-page app" literally,
-// and keeps the polling hooks in each view mounted/unmounted naturally as tabs change rather than
-// needing route-level data-fetching machinery this project has no other use for.
 export default function DashboardPage() {
   const [tab, setTab] = useState<Tab>("Jobs");
   const [refreshToken, setRefreshToken] = useState(0);

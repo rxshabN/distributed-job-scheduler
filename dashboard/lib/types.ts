@@ -1,7 +1,3 @@
-// Mirrors scheduler-service's response DTOs (com.rishab.scheduler.jobs.*) field-for-field --
-// kept as plain types rather than generated from an OpenAPI spec since the project has none and
-// the API surface is small enough that hand-matching is easy to keep correct.
-
 export type JobState = "PENDING" | "RUNNING" | "SUCCEEDED" | "DEAD_LETTER" | "CANCELLED";
 
 export interface JobResponse {

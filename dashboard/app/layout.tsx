@@ -2,9 +2,6 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-// Plus Jakarta Sans reads as more deliberate/modern than the default system stack this app was
-// shipping with (globals.css previously hardcoded body to Arial, silently discarding whatever
-// font was configured here). JetBrains Mono replaces it for job IDs, payload JSON, and worker IDs.
 const sans = Plus_Jakarta_Sans({
   variable: "--font-app-sans",
   subsets: ["latin"],

@@ -30,12 +30,6 @@ public class JobDependencyRepository {
 		}
 	}
 
-	// Existence check for dependsOn validation -- returns the subset of the given ids that don't
-	// actually correspond to a job row, so the caller can name exactly which ones are bad.
-	// Plain JdbcTemplate has no built-in "bind a collection as IN (...)" support the way
-	// NamedParameterJdbcTemplate does, and `= ANY(?)` needs an explicit java.sql.Array rather than
-	// a plain placeholder -- a hand-built IN (?,?,?) with one placeholder per id is the simplest
-	// correct option without pulling in a second JdbcTemplate flavor for one query.
 	public Set<Long> findMissingJobIds(Set<Long> ids) {
 		if (ids.isEmpty()) {
 			return Set.of();

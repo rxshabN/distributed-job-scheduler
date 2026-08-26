@@ -8,9 +8,6 @@ import type {
   WorkerResponse,
 } from "./types";
 
-// Cross-origin by design (spec §12): the dashboard (Vercel) and API (Oracle VM) are never on the
-// same origin in production, which is exactly why scheduler-service needs the CORS config noted
-// in WebCorsConfig rather than this being same-origin-and-therefore-invisible in dev.
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
 class ApiRequestError extends Error {
@@ -54,9 +51,6 @@ export interface SubmitJobRequest {
 }
 
 export const api = {
-  // The scheduler-service returns 201 for a genuinely new job and 200 when the idempotency key
-  // already exists (spec §7) -- surfacing which one happened lets the dashboard tell the user
-  // their submission was deduplicated rather than silently showing the (pre-existing) job as new.
   submitJob: async (body: SubmitJobRequest) => {
     const { body: job, status } = await requestWithStatus<import("./types").JobResponse>("/api/v1/jobs", {
       method: "POST",
@@ -72,8 +66,6 @@ export const api = {
     if (params.state) query.set("state", params.state);
     query.set("page", String(params.page ?? 0));
     query.set("size", String(params.size ?? 20));
-    // Jobs tab is sorted by ID ascending; the API defaults to createdAt DESC (display order for
-    // a firehose of new submissions), which isn't what the table should show.
     query.set("sort", "id,asc");
     return request<PagedJobs>(`/api/v1/jobs?${query.toString()}`);
   },

@@ -6,8 +6,6 @@ import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-// Spec §10's two gauges. Registered against live suppliers (a DB count, a Redis key count) rather
-// than pushed values, so each scrape reflects current state instead of whatever was last written.
 @Configuration
 public class SchedulerMetricsConfig {
 

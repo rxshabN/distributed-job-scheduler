@@ -23,17 +23,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import tools.jackson.databind.ObjectMapper;
 
-// Spec §11 test 7: "two scheduler instances reaping simultaneously do not double-requeue."
-//
-// One JVM cannot host two Spring contexts' worth of scheduler-service cheaply, so "two instances"
-// is modelled as concurrent invocations of the same JobReaper bean from separate threads. That is
-// a faithful model of the property under test and not a weakened one: the reaper holds no
-// per-instance state whatsoever -- its entire safety argument is the FOR UPDATE SKIP LOCKED on
-// the candidate SELECT plus each invocation's own transaction, both of which are per-connection,
-// not per-process. Threads and processes contend identically at the Postgres level.
-//
-// Not @Transactional, for the same reason as ConcurrentClaimIntegrationTest: a shared
-// test-managed transaction would collapse the row-locking the test exists to exercise.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 class ReaperConcurrencyIntegrationTest {
@@ -61,17 +50,11 @@ class ReaperConcurrencyIntegrationTest {
 	@Test
 	void concurrentReapersRequeueEachOrphanExactlyOnce() throws Exception {
 		List<Long> orphanIds = insertOrphanedRunningJobs(ORPHAN_COUNT);
-		// No heartbeat keys are written for these workers at all, so every candidate is a genuine
-		// orphan and all ORPHAN_COUNT rows are eligible -- the test is about how many times each
-		// is reclaimed, not about which ones qualify (JobReaperIntegrationTest covers that).
+
 		double reclaimedBefore = reclaimedCounterValue();
 
 		runReapersConcurrently();
 
-		// The counter is the double-requeue detector: JobReaper increments jobs_reclaimed_total
-		// once per row it actually flips RUNNING -> PENDING. If two reapers both reclaimed the
-		// same row, the state assertion below would still pass (PENDING is PENDING) while this
-		// one would read 51+ for 50 orphans.
 		assertThat(reclaimedCounterValue() - reclaimedBefore).isEqualTo(ORPHAN_COUNT);
 
 		List<String> states = jdbcTemplate.queryForList(
@@ -86,9 +69,6 @@ class ReaperConcurrencyIntegrationTest {
 
 		runReapersConcurrently();
 
-		// Reclaiming is not a new attempt (spec §5) -- the attempt was already counted at claim
-		// time. Every fixture row is seeded at attempt_count = 1, so any reaper that incremented,
-		// or any row reclaimed twice by a future implementation that did, shows up as a 2 here.
 		List<Integer> attemptCounts = jdbcTemplate.queryForList(
 				"SELECT attempt_count FROM jobs WHERE idempotency_key LIKE ?", Integer.class, KEY_PREFIX + "%");
 		assertThat(attemptCounts).hasSize(ORPHAN_COUNT).containsOnly(1);
@@ -134,9 +114,6 @@ class ReaperConcurrencyIntegrationTest {
 					RETURNING id
 					""",
 					Long.class, KEY_PREFIX + UUID.randomUUID(), objectMapper.createObjectNode().toString());
-			// PENDING -> RUNNING as a separate statement because the V1 trigger only permits the
-			// enumerated transitions; inserting directly as RUNNING would be a state no claim ever
-			// produced.
 			jdbcTemplate.update("""
 					UPDATE jobs SET state = CAST('RUNNING' AS job_state), claimed_by = ?, lease_expires_at = ?
 					WHERE id = ?

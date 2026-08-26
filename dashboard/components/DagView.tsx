@@ -23,12 +23,6 @@ interface LaidOutNode {
   y: number;
 }
 
-// ROADMAP.md Weekend 5 item 4: "Dashboard DAG visualization." Hand-rolled SVG, no graph library
-// (CLAUDE.md: "No component library beyond Tailwind") -- layout is a simple longest-path layering
-// of the depends-on graph (dependencies on the left, dependents to the right, matching the
-// execution order the claim query's dependency predicate actually enforces), not a general-purpose
-// force-directed layout. That's a deliberate scope match: this view exists to make the dependency
-// structure legible for a handful of demo jobs, not to render an arbitrarily large graph.
 export function DagView() {
   const { data: edges, error: edgesError } = usePolling(api.listDependencyEdges, 5000);
   const { data: jobsPage, error: jobsError } = usePolling(() => api.listJobs({ size: 200 }), 5000);
@@ -54,11 +48,6 @@ export function DagView() {
   const height = (layout.maxRow + 1) * ROW_HEIGHT + 40;
 
   return (
-    // The graph's natural size grows with the number of jobs and dependency depth, which can
-    // exceed its container for anything beyond a handful of demo jobs. Rendering at a fixed
-    // pixel size and scrolling would let it spill past the page; instead the SVG keeps its
-    // viewBox at the natural layout size but is scaled down to fit maxHeight/the container width,
-    // so it shrinks rather than overflows.
     <div className="flex w-full justify-center rounded border border-neutral-800 bg-neutral-950/40 p-4">
       <svg
         viewBox={`0 0 ${width} ${height}`}
@@ -110,13 +99,11 @@ function computeLayout(edges: { jobId: number; dependsOnId: number }[], jobs: Jo
     participating.add(edge.dependsOnId);
   }
 
-  // Longest-path depth: a node's depth is one more than its deepest dependency, so a chain
-  // A -> B -> C (A depends on B depends on C) lays out as C, B, A left to right -- dependencies
-  // resolve before the things that depend on them, same order the claim query actually enforces.
+
   const depthCache = new Map<number, number>();
   function depthOf(id: number, seen: Set<number> = new Set()): number {
     if (depthCache.has(id)) return depthCache.get(id)!;
-    if (seen.has(id)) return 0; // defensively break any (unreachable in practice) cycle
+    if (seen.has(id)) return 0;
     seen.add(id);
     const deps = dependsOn.get(id) ?? [];
     const depth = deps.length === 0 ? 0 : 1 + Math.max(...deps.map((d) => depthOf(d, seen)));

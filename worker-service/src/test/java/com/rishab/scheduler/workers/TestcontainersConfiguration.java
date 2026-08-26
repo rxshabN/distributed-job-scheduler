@@ -7,11 +7,7 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
-// Public so feature-package tests (e.g. com.rishab.scheduler.workers.jobs) can @Import it too --
-// package-by-feature means tests won't all live in this root package. Pinned to postgres:16-alpine
-// / redis:7-alpine (not the Initializr-generated :latest) to match docker-compose.yml and
-// scheduler-service's own TestcontainersConfiguration -- both services and local dev should run
-// the same versions production will, not whatever :latest happens to resolve to on test day.
+
 @TestConfiguration(proxyBeanMethods = false)
 public class TestcontainersConfiguration {
 

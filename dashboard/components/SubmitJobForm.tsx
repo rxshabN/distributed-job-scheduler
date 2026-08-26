@@ -107,8 +107,6 @@ export function SubmitJobForm({ onSubmitted }: { onSubmitted: () => void }) {
       if (created) {
         setResult({ ok: true, message: `Submitted job #${job.id} (${job.state})` });
       } else {
-        // spec §7: resubmitting a known idempotency_key returns the existing job rather than
-        // creating a new one, so this isn't a failure -- it just isn't a new submission either.
         setToast(`A job with this idempotency key already exists — showing job #${job.id} (${job.state}).`);
         setResult({ ok: true, message: `Job #${job.id} already exists for this idempotency key.` });
       }

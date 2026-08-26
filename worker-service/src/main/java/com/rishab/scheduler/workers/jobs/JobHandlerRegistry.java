@@ -6,11 +6,6 @@ import java.util.Map;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 
-// Built once at startup from every JobHandler bean Spring's ApplicationContext knows about (spec
-// §8: "discovered via Spring's ApplicationContext and registered in a map at startup"). Failing
-// fast on a duplicate jobType here, rather than letting the second registration silently shadow
-// the first, matters because the alternative failure mode is silent: the shadowed handler would
-// just never run, with no error anywhere, for as long as both beans happened to coexist.
 @Component
 public class JobHandlerRegistry {
 

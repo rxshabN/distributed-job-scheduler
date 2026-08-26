@@ -24,7 +24,6 @@ next-env.d.ts
 .vercel
 
 # --- Environment / secrets ---
-# Never commit these. Cloud credentials, DB passwords, SSH deploy keys.
 .env
 .env.*
 !.env.example
