@@ -1,0 +1,3 @@
+api-129-225-92-237.sslip.io {
+    reverse_proxy scheduler-service:8080
+}
