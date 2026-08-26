@@ -6,12 +6,6 @@ import java.util.Set;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-// Reads the same worker:heartbeat:{workerId} keys worker-service's HeartbeatService writes
-// (spec §5) and JobReaper checks -- this is purely a read-side view for GET /api/v1/workers and
-// the workers_alive_count gauge, spec §7/§10. KEYS is O(N) and blocks Redis while it runs; SCAN
-// would be the production-grade choice, but the number of workers in this system is never more
-// than a handful, so the simpler call is the right tradeoff here rather than added complexity
-// for a scale this project doesn't reach.
 @Service
 public class WorkerHeartbeatService {
 

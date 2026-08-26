@@ -17,16 +17,6 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
-// Basic single-threaded correctness for the claim query (spec §4) against real Postgres: it
-// proves the query claims the right rows and sets the right columns. The part it structurally
-// cannot cover -- that FOR UPDATE SKIP LOCKED makes that hold under contention -- is spec §11
-// test 1, covered separately in ConcurrentClaimIntegrationTest. Both are worth having: this one
-// pins down predicate-by-predicate behaviour that a concurrency test would only observe in
-// aggregate.
-//
-// spring.flyway.enabled=true overrides application.yml's app-wide false: this test needs the
-// real schema against its own Testcontainers Postgres, and the test-only migration copy under
-// src/test/resources/db/migration exists for exactly this.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @TestPropertySource(properties = "spring.flyway.enabled=true")

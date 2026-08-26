@@ -22,20 +22,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import tools.jackson.databind.ObjectMapper;
 
-// Spec §11 test 3 ("Idempotency -- submit the same idempotency_key twice; assert one job row
-// exists"), hardened past the single-threaded version JobApiIntegrationTest already covers, plus
-// the atomicity and durability properties the submission path depends on.
-//
-// The single-threaded version proves the catch-and-return branch works. It cannot prove the thing
-// that actually matters in production, where the dashboard's retry button and a double-clicked
-// form arrive on two Tomcat threads at once: that the uniqueness is enforced by the *database*
-// rather than by a check-then-insert window in application code. Only concurrent submitters
-// exercise that, and only they would catch a well-meaning future refactor to
-// "findByIdempotencyKey, then save if absent" -- which passes every single-threaded test and
-// races in production.
-//
-// Not @Transactional: JobInsertion.insert is REQUIRES_NEW and the recovery path depends on its
-// transaction having genuinely rolled back and committed independently.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 class JobSubmissionAcidIntegrationTest {
@@ -65,9 +51,7 @@ class JobSubmissionAcidIntegrationTest {
 
 		List<JobSubmissionResult> results = submitConcurrently(idempotencyKey, CONCURRENT_SUBMITTERS);
 
-		// Exactly one submitter won the insert; every other one took the catch-and-return branch.
 		assertThat(results.stream().filter(JobSubmissionResult::created).count()).isEqualTo(1);
-		// And all of them -- winner and losers alike -- describe the same single job.
 		Set<Long> distinctIds = results.stream().map(result -> result.job().getId()).collect(java.util.stream.Collectors.toSet());
 		assertThat(distinctIds).hasSize(1);
 
@@ -78,11 +62,7 @@ class JobSubmissionAcidIntegrationTest {
 
 	@Test
 	void aFailedSubmissionLeavesNoOrphanedDependencyEdges() {
-		// Consistency + atomicity across the two tables JobInsertion writes: the job row and its
-		// job_dependencies edges go in together or not at all. A partially-applied insert would
-		// leave edges pointing at an id that was never committed -- and because a failed IDENTITY
-		// insert burns its sequence value rather than reusing it, that id would never come back,
-		// so the stray edges would silently block a *different* job forever.
+
 		Long dependency = submitFresh().job().getId();
 		String contestedKey = KEY_PREFIX + UUID.randomUUID();
 
@@ -93,7 +73,6 @@ class JobSubmissionAcidIntegrationTest {
 		assertThat(second.created()).isFalse();
 		assertThat(second.job().getId()).isEqualTo(first.job().getId());
 
-		// The second submission's edge insert must not have run at all -- one job, one edge.
 		Integer edgeCount = jdbcTemplate.queryForObject(
 				"SELECT COUNT(*) FROM job_dependencies WHERE job_id = ?", Integer.class, first.job().getId());
 		assertThat(edgeCount).isEqualTo(1);
@@ -113,18 +92,12 @@ class JobSubmissionAcidIntegrationTest {
 		assertThatThrownBy(() -> jobService.submit(request(key, List.of(unknownJobId))))
 				.isInstanceOf(UnknownDependencyException.class);
 
-		// Validation happens before the insert, so a rejected submission must leave the table
-		// exactly as it found it -- no half-created job waiting to be claimed by a worker.
 		assertThat(jobRepository.findByIdempotencyKey(key)).isEmpty();
 	}
 
 	@Test
 	void acommittedSubmissionIsVisibleToAFreshConnectionOutsideTheSubmittingTransaction() {
-		// Durability, in the only form a test in the same process can honestly check it: the row
-		// is readable through plain SQL on a different connection from the one JobInsertion used,
-		// rather than only through the JPA persistence context that created it. A submission that
-		// was merely queued in a first-level cache would pass an entity-level assertion and be
-		// invisible to the worker-service JVM that has to claim it.
+
 		JobSubmissionResult result = submitFresh();
 
 		String stateOnAnotherConnection = jdbcTemplate.queryForObject(

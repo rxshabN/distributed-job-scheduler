@@ -7,8 +7,6 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
-// Public so feature-package tests (e.g. com.rishab.scheduler.jobs) can @Import it too --
-// package-by-feature means tests won't all live in this root package.
 @TestConfiguration(proxyBeanMethods = false)
 public class TestcontainersConfiguration {
 

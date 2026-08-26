@@ -29,9 +29,6 @@ class JobCompletionRepositoryIntegrationTest {
 	@Autowired
 	private JdbcTemplate jdbcTemplate;
 
-	// Matches the claimed_by written by insertRunningJob() below -- i.e. this is the worker that
-	// owns the fixture job, which every method here requires since JobCompletionRepository's
-	// completion methods are guarded on claimed_by matching.
 	private static final String OWNER = "worker-1";
 
 	private final ObjectMapper objectMapper = new ObjectMapper();

@@ -47,9 +47,6 @@ public class JobController {
 		return JobMapper.toResponse(jobService.retry(id));
 	}
 
-	// Default sort is display-oriented (most recently submitted first), not the claim order
-	// from spec §4 (priority DESC, next_run_at ASC) -- that ordering only matters to the worker
-	// claim query, not to someone browsing the job list.
 	@GetMapping
 	public PagedModel<JobResponse> list(
 			@RequestParam(required = false) JobState state,

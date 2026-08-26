@@ -40,14 +40,12 @@ class HeartbeatServiceIntegrationTest {
 	@Autowired
 	private JdbcTemplate jdbcTemplate;
 
-	// Matches the claimed_by written by insertRunningJob() below.
 	private static final String FIXTURE_OWNER = "test-worker";
 
 	private final ObjectMapper objectMapper = new ObjectMapper();
 
 	@Test
 	void writesHeartbeatKeyAtStartup() {
-		// @PostConstruct already ran once when the context started -- just verify the key exists.
 		String key = "worker:heartbeat:" + workerIdentity.workerId();
 		assertThat(redisTemplate.hasKey(key)).isTrue();
 	}

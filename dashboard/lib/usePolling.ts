@@ -2,10 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-// Spec §9: "polls /api/v1/stats and /api/v1/jobs on an interval. No WebSockets -- polling is
-// honest for this use case and simpler to defend." CLAUDE.md: "No state management library.
-// useState plus a polling hook is sufficient." This is that hook -- every view uses it instead
-// of each hand-rolling its own setInterval + fetch + cleanup.
 export function usePolling<T>(fetcher: () => Promise<T>, intervalMs: number) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<Error | null>(null);

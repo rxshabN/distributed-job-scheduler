@@ -20,12 +20,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
-// Exercises the three Weekend 1 endpoints against real Postgres via Testcontainers -- no
-// mocking the datastore, per CLAUDE.md. resubmittingKnownIdempotencyKeyReturnsExistingJob below
-// checks the API *contract* (200 vs 201, same job id); the concurrency half of spec §11 test 3
-// -- many submitters of one key racing, assert one row -- lives in
-// JobSubmissionAcidIntegrationTest, because proving the uniqueness comes from the database rather
-// than from a check-then-insert window needs concurrent callers, which MockMvc here never has.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -165,8 +159,6 @@ class JobApiIntegrationTest {
 	void retryRequeuesADeadLetterJobWithResetAttemptCount() throws Exception {
 		JsonNodePayload payload = new JsonNodePayload(objectMapper);
 		Job job = jobRepository.saveAndFlush(new Job("idem-retry-1", "http-callback", payload.of(Map.of()), 0, 1, Instant.now()));
-		// Drive it to DEAD_LETTER the same way worker-service's JobCompletionRepository would --
-		// via the trigger-respecting PENDING -> RUNNING -> DEAD_LETTER path, not a direct jump.
 		markDeadLetter(job.getId());
 
 		mockMvc.perform(post("/api/v1/jobs/{id}/retry", job.getId()))

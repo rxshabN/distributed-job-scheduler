@@ -31,9 +31,6 @@ export function JobsView({ refreshToken }: { refreshToken: number }) {
   );
 
   const { data, error, loading } = usePolling(fetchJobs, 3000);
-  // refreshToken bumping just forces this component to re-render with a fresh poll on its next
-  // tick after a submission elsewhere -- usePolling already re-fetches every 3s regardless, this
-  // just avoids a stale table for up to 3 seconds after the user's own submit.
   void refreshToken;
 
   return (

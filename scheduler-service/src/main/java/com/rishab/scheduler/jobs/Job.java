@@ -13,11 +13,6 @@ import java.time.Instant;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-// Deliberately no setters. state, attempt_count, claimed_by, and lease_expires_at are all
-// mutated by native SQL (the claim query, reaper, and backoff logic) that bypasses this entity
-// entirely -- a setter here would suggest a mutation path that doesn't actually reflect reality.
-// Field access (not property access) means Hibernate can still populate id/createdAt/updatedAt
-// from the DB defaults via reflection without any setter existing.
 @Entity
 @Table(name = "jobs")
 public class Job {
@@ -66,7 +61,7 @@ public class Job {
 	private Instant updatedAt;
 
 	protected Job() {
-		// JPA
+		// JPA requires a no-arg constructor for entity classes. It can be protected or private, but not public.
 	}
 
 	public Job(String idempotencyKey, String jobType, JsonNode payload, int priority, int maxAttempts,
@@ -77,10 +72,6 @@ public class Job {
 		this.priority = priority;
 		this.maxAttempts = maxAttempts;
 		this.nextRunAt = nextRunAt;
-		// Hibernate includes every mapped column in the INSERT and sends Java null explicitly,
-		// which overrides the column's DEFAULT now() in V1__initial_schema.sql (a default only
-		// applies when a column is omitted from the INSERT entirely). So the timestamp has to be
-		// set here, not left to Postgres.
 		Instant now = Instant.now();
 		this.createdAt = now;
 		this.updatedAt = now;

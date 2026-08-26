@@ -15,17 +15,6 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
-// Tests JobPoller's own orchestration -- that a successful execution routes through
-// markSucceeded and a failed one routes through rescheduleWithBackoff or markDeadLettered
-// depending on attempt vs. maxAttempts, plus that a job_executions row is written either way.
-// One poll cycle each: this is the routing table, not the retry lifecycle. Spec §11 tests 4 and 5
-// (exactly maxAttempts executions before DEAD_LETTER, and backoff staying inside the jitter
-// bounds) drive the same code across repeated real claim/execute cycles in
-// RetryExhaustionIntegrationTest.
-//
-// worker.poll-interval-ms is pushed out to an hour so the real @Scheduled trigger (which fires
-// once immediately on context startup regardless of the interval, then waits fixedDelay before
-// firing again) can't race with the test calling pollAndExecute() directly.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @TestPropertySource(properties = {"worker.poll-interval-ms=3600000", "spring.flyway.enabled=true"})

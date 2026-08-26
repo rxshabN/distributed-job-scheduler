@@ -15,14 +15,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
-// Tests JobReaper's own reclaim logic directly against real Postgres + Redis, proving the two
-// halves of its guard condition (lease expired, heartbeat absent) independently -- each of the
-// three tests below holds one half fixed and varies the other.
-//
-// The end-to-end story those halves add up to is spec §11 test 2, in
-// WorkerCrashRecoveryIntegrationTest: crash a worker mid-execution, watch the reaper requeue the
-// job, and watch a second worker finish it. Spec §11 test 7 (concurrent reapers not
-// double-requeueing) is in ReaperConcurrencyIntegrationTest.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 class JobReaperIntegrationTest {
@@ -42,7 +34,6 @@ class JobReaperIntegrationTest {
 	@Transactional
 	void reclaimsRunningJobWithExpiredLeaseAndNoHeartbeat() {
 		Long jobId = insertRunningJob("dead-worker-1", Instant.now().minusSeconds(5));
-		// deliberately no heartbeat key written for "dead-worker-1"
 
 		jobReaper.reclaimOrphans();
 

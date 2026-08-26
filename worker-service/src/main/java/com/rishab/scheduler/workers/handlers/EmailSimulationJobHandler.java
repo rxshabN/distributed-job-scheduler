@@ -7,10 +7,6 @@ import java.util.concurrent.ThreadLocalRandom;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 
-// Spec §8 handler 2: sleeps a configurable duration, fails with a configurable probability. Used
-// for load testing and demos -- not real email, so the "failure" is an explicit dial rather than
-// something that depends on an actual flaky dependency being available. Payload shape:
-// {"sleepMillis": 200, "failureProbability": 0.1} -- both optional, default to 200ms / never-fail.
 @Component
 public class EmailSimulationJobHandler implements JobHandler {
 

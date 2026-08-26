@@ -6,9 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 
-// Plain unit test, no Spring context -- BackoffPolicy is pure math (spec §6). This is deliberately
-// narrower than spec §11 test 5 ("Backoff timing": assert next_run_at grows and stays within
-// jitter bounds across real repeated attempts against a live job row), which stays reserved.
 class BackoffPolicyTest {
 
 	@Test
@@ -56,8 +53,6 @@ class BackoffPolicyTest {
 		BackoffPolicy policy = new BackoffPolicy(1000, 1000);
 		Instant now = Instant.parse("2026-01-01T00:00:00Z");
 
-		// base delay == max delay == 1000ms, so every attempt is capped at exactly 1000ms
-		// regardless of the exponential term -- delay is deterministically in [0, 1000].
 		Instant nextRunAt = policy.nextRunAt(1, now);
 
 		assertThat(nextRunAt).isBetween(now, now.plusMillis(1000));

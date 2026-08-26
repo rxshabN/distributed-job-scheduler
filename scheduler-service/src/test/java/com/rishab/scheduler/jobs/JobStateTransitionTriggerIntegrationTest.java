@@ -14,10 +14,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
-// The trg_jobs_state_transition trigger (V1__initial_schema.sql) is exercised with raw SQL via
-// JdbcTemplate, not the Job entity/JobRepository -- Job deliberately has no setter for state
-// (see Job.java), and the whole point of the trigger is that it guards the persistence layer
-// regardless of which code path issues the UPDATE (JPA, the claim query, the reaper, ...).
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 class JobStateTransitionTriggerIntegrationTest {

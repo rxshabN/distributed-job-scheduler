@@ -17,17 +17,10 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
 
-// Uses a plain JDK HttpServer as the callback target rather than a mocking library (none is a
-// project dependency) -- real bytes over a real socket, which is the point of this handler
-// existing at all (spec §8: "demonstrates real I/O failure").
 class HttpCallbackJobHandlerTest {
 
 	private final ObjectMapper objectMapper = new ObjectMapper();
-	// allow-private-networks is enabled for this handler test specifically because its whole point
-	// is a real request over a real socket to a JDK HttpServer on localhost -- a loopback address,
-	// which the production default (false) exists to refuse. Production wiring (WorkerConfig)
-	// leaves that default in place; it is loosened only here so the existing I/O-behaviour tests
-	// below can still reach their local server.
+	
 	private final HttpCallbackJobHandler handler =
 			new HttpCallbackJobHandler(restClient(), permissiveValidator());
 	private HttpServer server;

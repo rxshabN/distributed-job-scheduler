@@ -6,11 +6,6 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-// Pure unit test of the Kahn's-algorithm cycle check (ROADMAP.md Weekend 5 item 2). The cycle
-// case here is hand-constructed directly against the algorithm -- as JobService's own comment on
-// PENDING_SUBMISSION_SENTINEL_ID explains, a real cycle can never actually arise through the
-// submission API (a new job only ever adds outgoing edges to already-existing jobs, never
-// incoming ones), so this is the only way to exercise that branch at all.
 class DependencyCycleDetectorTest {
 
 	private final DependencyCycleDetector detector = new DependencyCycleDetector();

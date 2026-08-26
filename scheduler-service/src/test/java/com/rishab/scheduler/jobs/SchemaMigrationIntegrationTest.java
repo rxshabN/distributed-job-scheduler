@@ -13,9 +13,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
-// Proves the whole scaffolding stack actually works together, not just that each piece
-// compiles in isolation: real Postgres + Redis via Testcontainers, Flyway migrating on
-// startup, and Hibernate round-tripping the Postgres enum + JSONB mapping from spec §3.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 class SchemaMigrationIntegrationTest {
