@@ -57,6 +57,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # OCI repository names must be all-lowercase, but github.repository_owner preserves the
+      # account's display casing (rxshabN) -- buildx rejected every tag built directly from it
+      # ("repository name must be lowercase") until this step lowercased it first. GHCR_NAMESPACE
+      # in .env on the VM has to match this same lowercase form for `docker compose pull` to find
+      # the image.
+      - name: Lowercase repository owner
+        id: owner
+        run: echo "lc=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
       # linux/amd64 + linux/arm64: the Oracle Always Free VM (spec §12) is Ampere A1 (arm64), the
       # GCP e2-micro fallback is amd64 -- one image tag has to work on either without rebuilding.
       # Temurin and the JVM itself are architecture-agnostic, which is what makes this possible
@@ -67,8 +76,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:latest
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
+            ghcr.io/${{ steps.owner.outputs.lc }}/${{ matrix.service }}:latest
+            ghcr.io/${{ steps.owner.outputs.lc }}/${{ matrix.service }}:${{ github.sha }}
 
   deploy:
     name: Deploy to Oracle VM
