@@ -69,6 +69,11 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # Default (10m) is shorter than the healthcheck's own worst-case wait (600s start-period
+          # + 8*15s retries = ~12m, see scheduler-service/Dockerfile) -- without this the SSH step
+          # itself would time out and report failure while docker compose was still legitimately
+          # waiting on a slow-but-healthy cold start.
+          command_timeout: 15m
           script: |
             cd distributed-job-scheduler
             docker compose pull scheduler-service worker-service-1 caddy
