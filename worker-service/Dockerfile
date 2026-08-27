@@ -21,8 +21,6 @@ COPY --from=build --chown=app:app /app/target/worker-service-*.jar app.jar
 USER app
 EXPOSE 8081
 
-# See scheduler-service/Dockerfile for why start-period/retries were widened -- same 1 GB
-# E2.1.Micro cold-start reality applies here.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=600s --retries=8 \
     CMD curl -fsS http://localhost:8081/actuator/health || exit 1
 
